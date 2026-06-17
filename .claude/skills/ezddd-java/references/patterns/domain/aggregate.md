@@ -290,11 +290,11 @@ public Product(ProductId productId, String name) {
     requireNotNull("name", name);
 
     apply(new ProductEvents.ProductCreated(
-        productId,
-        name,
-        new HashMap<>(),
-        UUID.randomUUID(),
-        DateProvider.now()
+            productId,
+            name,
+            new HashMap<>(),
+            UUID.randomUUID(),
+            DateProvider.now()
     ));
 
     ensure("ID matches", () -> this.id.equals(productId));
@@ -321,17 +321,17 @@ public Product(ProductId productId, String name) {
 ```java
 // CORRECT
 apply(new ProductEvents.ProductCreated(
-    productId,
-    name,
-    UUID.randomUUID(),
+              productId,
+      name,
+      UUID.randomUUID(),
     DateProvider.now()      // Use DateProvider
 ));
 
 // WRONG
 apply(new ProductEvents.ProductCreated(
-    productId,
-    name,
-    UUID.randomUUID(),
+              productId,
+      name,
+      UUID.randomUUID(),
     Instant.now()           // NEVER use Instant.now() directly
 ));
 ```
@@ -361,11 +361,11 @@ public Product(ProductId productId, String name) {
 ensure("Description matches", () -> Objects.equals(description, this.description));
 
 // WRONG: Verbose if-else
-if (description != null) {
-    ensure("Description matches", () -> this.description.equals(description));
-} else {
-    ensure("Description is null", () -> this.description == null);
-}
+        if (description != null) {
+ensure("Description matches", () -> this.description.equals(description));
+        } else {
+ensure("Description is null", () -> this.description == null);
+        }
 ```
 
 ### Rule 6: Contract Helper Methods (PIT Support)
@@ -395,8 +395,8 @@ public void select(SprintId sprintId, String userId) {
     require("Must be in backlog", () -> this.state == PbiState.IN_BACKLOG);
 
     if (ignore("Already selected - idempotent no-op",
-               () -> this.state == PbiState.SELECTED &&
-                     Objects.equals(this.sprintId, sprintId))) {
+            () -> this.state == PbiState.SELECTED &&
+                    Objects.equals(this.sprintId, sprintId))) {
         return;
     }
 
@@ -405,8 +405,8 @@ public void select(SprintId sprintId, String userId) {
 
 // WRONG: Plain if-check without semantic meaning
 if (this.state == PbiState.SELECTED) {
-    return;  // Unclear why we're returning
-}
+        return;  // Unclear why we're returning
+        }
 ```
 
 ### Rule 8: Soft Delete Support (When Spec Requires Deletion)
@@ -569,6 +569,44 @@ public class Product extends EsAggregateRoot<ProductId, ProductEvents> {
 | Events | `apply()` creates NEW events | `super(domainEvents)` replays existing |
 | Postconditions | `ensure(...)` | None |
 
+### Rule 13: Read-only Entity Exposure (MANDATORY)
+
+When an Aggregate contains child Entity fields or child Entity collections, public Aggregate methods MUST NOT return the internal mutable Entity instance directly.
+
+Use the Read-only Entities pattern whenever an internal Entity crosses the Aggregate boundary:
+
+- Single child Entity getter returns `null` or a new `ReadOnly{Entity}` wrapper/copy.
+- Collection getter returns an unmodifiable collection.
+- Collection getter for child Entities maps every item to `ReadOnly{Entity}`.
+- Child Entity mutation methods remain package-private and are called only from Aggregate `when(event)` handlers.
+- All Aggregate state changes still go through Aggregate command methods and `apply(event)`.
+
+```java
+// CORRECT: expose read-only child Entity
+public ProductGoal getGoal() {
+    return goal == null ? null : new ReadOnlyProductGoal(goal);
+}
+
+// CORRECT: expose unmodifiable read-only Entity collection
+public List<Task> getTasks() {
+    return tasks.values().stream()
+            .map(ReadOnlyTask::new)
+            .collect(Collectors.toUnmodifiableList());
+}
+
+// WRONG: leaks mutable internal Entity reference
+public ProductGoal getGoal() {
+    return this.goal;
+}
+
+// WRONG: leaks mutable internal collection and mutable Entity references
+public List<Task> getTasks() {
+    return this.tasks;
+}
+```
+
+**Rationale:** Clients may retain references returned by Aggregate Root methods. Returning read-only Entities preserves Aggregate encapsulation and gives immediate feedback (`UnsupportedOperationException`) when clients attempt to mutate internal Entities.
+
 ---
 
 ## VERIFICATION CHECKPOINTS
@@ -599,6 +637,7 @@ Before writing any file:
 | Constructor | Uses `apply()` not direct assignment |
 | Events | Uses `DateProvider.now()` |
 | State changes | Only in `when()` methods |
+| Child Entity exposure | Public getters return `ReadOnly{Entity}` or unmodifiable read-only collections |
 
 ```
 IF ANY CHECK FAILS:
@@ -617,6 +656,11 @@ cd ${projectRoot} && mvn compile -q -pl :${module} 2>&1 | head -20
 # Verify no direct state assignment in constructor
 grep -n "this\.[a-z]* = " ${outputFile} | grep -v "when("
 # Should return empty (all assignments should be in when() methods)
+
+# Verify public getters do not leak internal mutable child Entities
+grep -n "return this\." ${outputFile}
+grep -n "return [a-zA-Z0-9_]*;" ${outputFile}
+# Manually inspect child Entity getters: they must wrap with ReadOnly{Entity}
 ```
 
 ```
@@ -627,6 +671,10 @@ IF COMPILATION FAILS:
 IF DIRECT ASSIGNMENT FOUND OUTSIDE when():
   This is a CRITICAL violation of Event Sourcing
   Fix immediately
+
+IF MUTABLE CHILD ENTITY LEAK FOUND:
+  Wrap the Entity with ReadOnly{Entity}
+  Return unmodifiable collections for Entity collections
 ```
 
 ---
@@ -669,6 +717,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 ```
 
 ### Step 4: Generate Class Declaration
@@ -768,6 +817,34 @@ public ${Aggregate}Id getId() {
     return id;
 }
 ```
+
+### Step 9.6: Generate Read-only Entity Getters (MANDATORY)
+
+For every Aggregate attribute whose type is a child Entity, generate a getter that returns a read-only Entity:
+
+```java
+public ${ChildEntity} get${ChildEntity}() {
+    return ${childEntityField} == null ? null : new ReadOnly${ChildEntity}(${childEntityField});
+}
+```
+
+For every `List<ChildEntity>`, `Set<ChildEntity>`, or `Map<Id, ChildEntity>` attribute, generate an accessor that returns an unmodifiable collection of read-only Entities:
+
+```java
+public List<${ChildEntity}> get${ChildEntities}() {
+    return ${childEntityCollection}.stream()
+            .map(ReadOnly${ChildEntity}::new)
+            .collect(Collectors.toUnmodifiableList());
+}
+
+public List<${ChildEntity}> get${ChildEntities}FromMap() {
+    return ${childEntityMap}.values().stream()
+            .map(ReadOnly${ChildEntity}::new)
+            .collect(Collectors.toUnmodifiableList());
+}
+```
+
+Do not return internal mutable Entity references from public Aggregate methods. Use `entity.md` to generate the corresponding `ReadOnly{ChildEntity}` class.
 
 ### Step 10: Generate CATEGORY constant and getCategory()
 

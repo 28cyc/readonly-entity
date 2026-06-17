@@ -49,6 +49,7 @@ Child Entities are distinct from Aggregate Roots and Value Objects:
 |------|----------|
 | Child Entity | `src/main/java/{rootPackage}/{aggregate}/entity/{ChildEntity}.java` |
 | Entity ID | `src/main/java/{rootPackage}/{aggregate}/entity/{ChildEntity}Id.java` |
+| Read-only Child Entity | `src/main/java/{rootPackage}/{aggregate}/entity/ReadOnly{ChildEntity}.java` (required for mutable class entities) |
 
 ---
 
@@ -154,6 +155,8 @@ public class Task {
 
 **Use for:** Entities managed as collection items within aggregate.
 
+When using stream-based read-only collection accessors, include `import java.util.stream.Collectors;`.
+
 ```java
 // In Aggregate Root - storing child entities
 // ⚠️ NOTE: EsAggregateRoot subclasses MUST NOT use field initializers (aggregate.md Rule 11).
@@ -170,11 +173,14 @@ public class Plan extends EsAggregateRoot<PlanId, PlanEvents> {
     }
 
     public Task getTask(TaskId taskId) {
-        return tasks.get(taskId);
+        Task task = tasks.get(taskId);
+        return task == null ? null : new ReadOnlyTask(task);
     }
 
     public List<Task> getAllTasks() {
-        return List.copyOf(tasks.values());
+        return tasks.values().stream()
+                .map(ReadOnlyTask::new)
+                .collect(Collectors.toUnmodifiableList());
     }
 }
 ```
@@ -513,6 +519,46 @@ public Task(TaskId id, String name) {
 
 **Rationale:** Child entities cannot exist independently of their Aggregate.
 
+### Rule 11: Generate Read-only Entity for Mutable Child Entity (MANDATORY)
+
+Every mutable class Entity MUST have a matching `ReadOnly{Entity}` class in the same package.
+
+Use the Special Case implementation:
+
+- `ReadOnly{Entity}` extends `{Entity}` so callers keep the domain type.
+- Constructor accepts the real Entity and shallow-copies immutable values.
+- Override every mutation method to throw `UnsupportedOperationException`.
+- Inherit query methods that return primitives, Strings, enums, Value Objects, or other immutable values.
+- Override query methods that return collections to return unmodifiable copies.
+- Override query methods that return child Entities to return their read-only variants.
+
+```java
+// CORRECT: read-only special case
+public class ReadOnlyTask extends Task {
+    public ReadOnlyTask(Task task) {
+        super(task.getId(), task.getPlanId(), task.getName());
+        super.changeState(task.getState());
+    }
+
+    @Override
+    void rename(String newName) {
+        throw new UnsupportedOperationException("Task is read-only");
+    }
+
+    @Override
+    void markComplete() {
+        throw new UnsupportedOperationException("Task is read-only");
+    }
+
+    @Override
+    void changeState(TaskState newState) {
+        throw new UnsupportedOperationException("Task is read-only");
+    }
+}
+```
+
+**Rationale:** Aggregate public getters expose read-only child Entities. This prevents clients from bypassing Aggregate Root commands while still preserving the domain model type.
+
 ---
 
 ## VERIFICATION CHECKPOINTS
@@ -579,6 +625,7 @@ Before writing any file:
 | Final ID field | ID field is declared final |
 | Parent reference | Aggregate ID is included |
 | Constructor validation | Uses Objects.requireNonNull() |
+| Read-only class | Mutable class Entity has `ReadOnly{Entity}` |
 
 ```
 IF ANY CHECK FAILS:
@@ -601,6 +648,9 @@ grep "apply(" ${entityFile}
 # Verify mutation methods are not public
 grep -E "public void (rename|update|change|set|mark)" ${entityFile}
 # Should return empty (mutations should be package-private)
+
+# Verify mutable entities have read-only special case
+test -f "${entityDir}/ReadOnly${ChildEntity}.java"
 ```
 
 ```
@@ -610,6 +660,9 @@ IF COMPILATION FAILS:
 
 IF PUBLIC MUTATION FOUND:
   Change to package-private (remove public modifier)
+
+IF READONLY ENTITY MISSING FOR MUTABLE CLASS ENTITY:
+  Generate ReadOnly{Entity}.java before finishing
 ```
 
 ---
@@ -734,11 +787,47 @@ public class ${ChildEntity} {
 }
 ```
 
-### Step 5: Update Aggregate Root (if needed)
+### Step 5: Generate Read-only Entity Class (for Mutable Class Entity)
+
+For every mutable class Entity, generate `ReadOnly${ChildEntity}.java`:
+
+```java
+package ${rootPackage}.${aggregateLowerCase}.entity;
+
+import java.util.List;
+
+public class ReadOnly${ChildEntity} extends ${ChildEntity} {
+
+    public ReadOnly${ChildEntity}(${ChildEntity} real) {
+        super(real.getId(), real.get${Aggregate}Id(), real.get${MutableFieldPascal}());
+        super.changeState(real.getState());
+    }
+
+    @Override
+    void update${MutableFieldPascal}(${MutableType} new${MutableFieldPascal}) {
+        throw new UnsupportedOperationException("${ChildEntity} is read-only");
+    }
+
+    @Override
+    void changeState(${State} newState) {
+        throw new UnsupportedOperationException("${ChildEntity} is read-only");
+    }
+
+    // If the Entity has collection getters, override them:
+    // @Override
+    // public List<SomeValue> getSomeValues() {
+    //     return List.copyOf(super.getSomeValues());
+    // }
+}
+```
+
+If the Entity constructor cannot reconstruct all state needed by the read-only copy, add package-private state synchronization methods to the base Entity and override those methods in `ReadOnly${ChildEntity}` to throw exceptions.
+
+### Step 6: Update Aggregate Root (if needed)
 
 Ensure Aggregate has:
 - Collection field for entities
-- Access methods (has, get, getAll)
+- Access methods (has, get, getAll) that return read-only child Entities
 - Event handlers in when() for entity lifecycle
 
 ---
