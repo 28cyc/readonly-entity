@@ -3,7 +3,12 @@ package tw.teddysoft.aiscrum.product.entity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import tw.teddysoft.aiscrum.common.entity.DateProvider;
 import tw.teddysoft.ucontract.PreconditionViolationException;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -84,6 +89,39 @@ public class ProductContractTest {
             ProductEvents.ProductCreated event =
                     (ProductEvents.ProductCreated) product.getDomainEvents().get(0);
             assertThat(event.state()).isEqualTo(ProductLifecycleState.DRAFT.name());
+        }
+
+        @Test
+        void Product_readonly_test() {
+            ProductGoal goal = new ProductGoal(
+                    ProductGoalId.valueOf("goal-001"),
+                    "original title",
+                    "description",
+                    List.of(),
+                    DateProvider.now(),
+                    null,
+                    ProductGoalState.PLANNED
+            );
+
+            Product product = new Product(List.of(
+                    new ProductEvents.ProductCreated(
+                            validId,
+                            validName,
+                            goal,
+                            null,
+                            null,
+                            ProductLifecycleState.DRAFT.name(),
+                            new HashMap<>(),
+                            UUID.randomUUID(),
+                            DateProvider.now()
+                    )
+            ));
+
+            ProductGoal productGoal = product.getGoal();
+
+            assertThat(productGoal.title()).isEqualTo("original title");
+            productGoal.changeTitle("changed title");
+            assertThat(productGoal.title()).isEqualTo("changed title");
         }
     }
 }
