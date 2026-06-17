@@ -67,13 +67,23 @@ fi
 # Step 3: Verify checksums for each marker
 # ─────────────────────────────────────────────────────────────
 
+sha256_tool() {
+  if command -v shasum &>/dev/null; then
+    shasum -a 256
+  elif command -v sha256sum &>/dev/null; then
+    sha256sum
+  else
+    echo "no-sha256-tool  -"
+  fi
+}
+
 compute_checksum() {
   local files_pattern="$1"
   local checksum=""
 
   if [[ -d "$PROJECT_DIR/src" ]]; then
     checksum=$(find "$PROJECT_DIR/src" -path "*/${files_pattern}/*.java" -type f 2>/dev/null \
-      | sort | xargs cat 2>/dev/null | shasum -a 256 | cut -d' ' -f1)
+      | sort | xargs cat 2>/dev/null | sha256_tool | cut -d' ' -f1)
   fi
 
   echo "${checksum:-empty}"
