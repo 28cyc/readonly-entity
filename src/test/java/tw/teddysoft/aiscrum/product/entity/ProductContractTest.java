@@ -2,7 +2,13 @@ package tw.teddysoft.aiscrum.product.entity;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import tw.teddysoft.aiscrum.common.entity.DateProvider;
 
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -41,6 +47,42 @@ public class ProductContractTest {
         void product_created_event_is_generated() {
             Product product = new Product(PRODUCT_ID, PRODUCT_NAME, USER_ID);
             _productCreatedEventGenerated(product);
+        }
+
+        @Test
+        void product_goal_should_be_read_only() {
+            ProductGoal goal = new ProductGoal(
+                    ProductGoalId.valueOf("goal-001"),
+                    "original title",
+                    "description",
+                    List.of(),
+                    DateProvider.now(),
+                    null,
+                    ProductGoalState.PLANNED
+            );
+
+            Product product = new Product();
+
+            product.when(new ProductEvents.ProductCreated(
+                    ProductId.valueOf(PRODUCT_ID),
+                    ProductName.valueOf(PRODUCT_NAME),
+                    goal,
+                    null,
+                    null,
+                    ProductLifecycleState.DRAFT.name(),
+                    Map.of(),
+                    UUID.randomUUID(),
+                    DateProvider.now()
+            ));
+
+            ProductGoal productGoal = product.getGoal();
+
+            assertThat(productGoal).isInstanceOf(ReadOnlyProductGoal.class);
+            assertThat(productGoal.getTitle()).isEqualTo("original title");
+
+            assertThatThrownBy(() -> productGoal.updateTitle("new title"))
+                    .isInstanceOf(UnsupportedOperationException.class)
+                    .hasMessage("ProductGoal is read-only");
         }
     }
 
