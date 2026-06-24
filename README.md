@@ -7,7 +7,6 @@
 - Aggregate：`Product`
 - Child Entity：`ProductGoal`
 - Demo Use Case：建立 Product 後，驗證 `ProductGoal` 對外暴露時是否能被直接修改
-- 若要完整對應 `ProductGoal` 行為，可改以 `SetProductGoal` 作為 demo use case
 
 ## Read-only Entity Pattern 簡介
 
