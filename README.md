@@ -81,6 +81,8 @@ assertThatThrownBy(() -> productGoal.changeTitle("new title"))
 
 ## 對 `aggregate.md` 的修改
 
+規範 AI 如何生成符合 Event Sourcing、DDD 與專案慣例的 Aggregate Root
+
 ### 1. 新增 Rule 13: Read-only Entity Exposure
 
 在 `aggregate.md` 中新增強制規則，要求 Aggregate 若包含 child Entity，不可以直接對外回傳內部 mutable Entity。
@@ -125,6 +127,8 @@ public List<Task> getTasks() {
 ```
 
 ## 對 `entity.md` 的修改
+
+規範 AI 如何生成 Aggregate 內部的 Child Entity
 
 ### 1. Output 表格新增 `ReadOnly{ChildEntity}.java`
 
@@ -176,7 +180,7 @@ return tasks.values().stream()
 
 ## 結論
 
-本次修改不是只把 Read-only Entity Pattern 加入文件說明，而是將它補進 AI code generation skill 的規則、模板與驗證流程中。
+本次作業將 Read-only Entity Pattern 補進 AI code generation skill 的規則、模板與檢查點中。
 
 修改後的生成流程會變成：
 
@@ -192,3 +196,7 @@ aggregate.md
 ```
 
 這樣可以讓 AI 之後在生成 Aggregate 與 Child Entity 時，更穩定地遵守 Read-only Entity Pattern，避免直接暴露 Aggregate 內部 mutable Entity，進而保護 Aggregate 的封裝與一致性。
+
+不過，目前調整範圍主要集中在 source code generation，尚未能保證 AI 會自動產生對應的測試案例來驗證 read-only wrapper、不可變 collection，以及 mutation method 阻擋行為。
+
+因此，現階段對 read-only entity 行為的測試仍需人工撰寫。
