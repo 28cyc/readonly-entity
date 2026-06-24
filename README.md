@@ -39,7 +39,7 @@ assertThat(productGoal.title()).isEqualTo("original title");
 productGoal.changeTitle("changed title");
 assertThat(productGoal.title()).isEqualTo("changed title");
 ```
-[text]([link](https://github.com/28cyc/readonly-entity/blob/before-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java))
+[測試](https://github.com/28cyc/readonly-entity/blob/before-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java)
 
 這代表外部程式可以直接修改 `ProductGoal`，繞過 `Product` Aggregate Root。
 
@@ -65,7 +65,7 @@ assertThatThrownBy(() -> productGoal.changeTitle("new title"))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessage("ProductGoal is read-only");
 ```
-[text]([link](https://github.com/28cyc/readonly-entity/blob/after-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java))
+[測試](https://github.com/28cyc/readonly-entity/blob/after-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java)
 
 這樣外部仍然可以讀取 `ProductGoal` 的資料，但不能直接修改它。
 
