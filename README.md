@@ -32,12 +32,15 @@ Paper 中提出的解法是：Aggregate 若要回傳內部 Entity，應該回傳
 
 在尚未套用 pattern 前，`Product.getGoal()` 可能直接回傳內部的 `ProductGoal`：
 
+[src](https://github.com/28cyc/readonly-entity/blob/before-readonly/src/main/java/tw/teddysoft/aiscrum/product/entity/Product.java)
+
 ```java
 public ProductGoal getGoal() { return goal; }
 ```
 
 外部可以繞過 `Product` Aggregate Root 直接修改 `ProductGoal`。
-[測試](https://github.com/28cyc/readonly-entity/blob/before-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java)
+
+[Test](https://github.com/28cyc/readonly-entity/blob/before-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java)
 
 ```java
 ProductGoal productGoal = product.getGoal();
@@ -51,6 +54,8 @@ assertThat(productGoal.title()).isEqualTo("changed title");
 
 套用 pattern 後，`Product.getGoal()` 不再回傳內部真正的 `ProductGoal`，而是回傳 `ReadOnlyProductGoal`：
 
+[src](https://github.com/28cyc/readonly-entity/blob/after-readonly/src/main/java/tw/teddysoft/aiscrum/product/entity/Product.java)
+
 ```java
 public ProductGoal getGoal() {
     return goal == null ? null : new ReadOnlyProductGoal(goal);
@@ -58,7 +63,8 @@ public ProductGoal getGoal() {
 ```
 
 外部無法直接修改 `ProductGoal`。
-[測試](https://github.com/28cyc/readonly-entity/blob/after-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java)
+
+[Test](https://github.com/28cyc/readonly-entity/blob/after-readonly/src/test/java/tw/teddysoft/aiscrum/product/entity/ProductContractTest.java)
 
 ```java
 ProductGoal productGoal = product.getGoal();
